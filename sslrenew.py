@@ -1,4 +1,6 @@
 #!/bin/python3
+#Author: Maricius
+
 
 import subprocess
 import sys
