@@ -107,10 +107,13 @@ def generate_csr(domain):
     print(domain)
     country = input('Country?')
     org = domain
+    cn = 'www.'+domain
     email = input('email?')
     state = input('state')
+    cmd = 'virtualmin generate-cert --domain ' +domain+ ' --cn '+cn+' --ou IT --c '+country+ ' --l odense --o ' +org+ '  --email '+email+ ' --st '+state+ ' --size 2048 --sha2 --csr'
     home_path = domain_info['home']+'/'
-    subprocess.run(['ssh', target, 'virtualmin generate-cert --domain ' +domain+ ' --ou IT --c '+country+ ' --l odense --o ' +org+ '  --email '+email+ ' --st '+state+ ' --size 2048 --sha2 --csr'])
+    #print(cmd)
+    subprocess.run(['ssh', target, cmd])
     subprocess.run(['scp', target+':'+home_path+'ssl.csr', 'ssl.csr'])
     with open('ssl.csr', 'r') as csr_file:
         csr=csr_file.read()
@@ -123,9 +126,9 @@ def generate_csr(domain):
 #create_ssl('PositiveSSl')
 domain_info = get_info(target)
 csr = generate_csr(target)
-#print(activate_ssl(951952, csr))
+print(activate_ssl(951690, csr))
 
-get_cert_status('951952')
+get_cert_status('951690')
 #make_dir(domain_info)
 
 #create_ssl()
