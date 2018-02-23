@@ -1,7 +1,6 @@
 #!/bin/python3
 #Author: Maricius
 
-
 import subprocess
 import sys
 import requests
@@ -13,14 +12,16 @@ target = str(sys.argv[1])
 conf_file = 'ssl.conf'
 lines = [line.strip().split('=') for line in open('ssl.conf')]
 config = {}
+#print(lines)
 for line in lines:
+    #print(config)
     config[line[0]] = line[1]
 
 key  = config['apikey']
 user = config['user']
 ip   = config['clientip']
-cmd = ''
-base_url = 'https://api.sandbox.namecheap.com/xml.response?ApiUser='+user+'&ApiKey='+key+'&UserName='+user+'&Command='+cmd+''
+
+base_url = 'https://api.sandbox.namecheap.com/xml.response'
 
 def get_info(domain):
 
@@ -64,8 +65,9 @@ def create_ssl(*type):
         ssl_type=type[0]
     else:
         ssl_type = "PositiveSSL"
-
-    r = requests.post('https://api.sandbox.namecheap.com/xml.response?ApiUser='+user+'&ApiKey='+key+'&UserName='+user+'&Command=namecheap.ssl.create&ClientIp='+ip+'&Years=1&Type='+ssl_type)
+    cmd = 'namecheap.ssl.create'
+    params = {'ApiUser': user, 'ApiKey': key, 'UserName': user, 'Command': cmd, 'ClientIP': ip, 'Years': 1, 'Type': ssl_type}
+    r = requests.post(base_url, data=params)
     r.raw.decode_content = True
 
     root = ET.fromstring(r.content)
@@ -74,28 +76,35 @@ def create_ssl(*type):
         for kid in child:
             for baby in kid:
                 cert_id = baby.get('CertificateID')
+    #print(cert_id)
     return(cert_id)
 
 
-    #print(r)
-    #print(tree)
 def activate_ssl(id,csr):
-    cmd = ''
-    r = requests.post('''https://api.sandbox.namecheap.com/xml.response?ApiUser='+user+'&ApiKey='+key+'&UserName='+user+'
-    &Command=namecheap.ssl.activate&ClientIp='+ip+'&CertificateID='+id+'&HTTPDCValidation=TRUE&csr='+csr+'&WebServerType=apache2
-    &AdminFirstName=Red&AdminLastName=Web&AdminAddress1=Blangstedgårdsvej 1''')
+    cmd = 'namecheap.ssl.activate'
+    params = {'ApiUser': user, 'ApiKey': key, 'UserName': user, 'Command': cmd, 'ClientIP':ip, 'CertificateID':id, 'HTTPDCValidation':'TRUE', 'csr':csr,
+              'WebServerType':'apache2', 'AdminFirstName':config['AdminFirstName'], 'AdminLastName':config['AdminLastName'],
+              'AdminAddress1':config['AdminAddress1'], 'AdminEmailAddress':config['AdminEmailAddress']}
+
+    r = requests.get(base_url, params=params)
+    r.raw.decode_content = True
+    return(r.text)
+
 
 def get_cert_status(id):
     cmd = 'namecheap.ssl.getinfo'
-    params =
-    r = requests.get(base_url+'&certificateID='+id+'&ClientIp='+ip+'&returncertificate=true&returntype=individual')
+
+    params = {'ApiUser': user, 'ApiKey': key, 'UserName': user, 'Command': cmd, 'ClientIp': ip, 'certificateID': id,
+              'returncertificate': 'true', 'returntype': 'individual'}
+    r = requests.get(base_url, data = params)
     r.raw.decode_content = True
-    #print(r.content)
+
     print(r.text)
 
 
 def generate_csr(domain):
     domain = domain
+    print(domain)
     country = input('Country?')
     org = domain
     email = input('email?')
@@ -109,12 +118,15 @@ def generate_csr(domain):
     return csr
 
 
-#get_cert_status('951671')
+
 
 #create_ssl('PositiveSSl')
-#domain_info = get_info(target)
-#csr = generate_csr(target)
+domain_info = get_info(target)
+csr = generate_csr(target)
+#print(activate_ssl(951952, csr))
+
+get_cert_status('951952')
 #make_dir(domain_info)
 
-create_ssl()
+#create_ssl()
 
