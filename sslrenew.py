@@ -6,15 +6,19 @@ import sys
 import requests
 import os
 import xml.etree.ElementTree as ET
+import time
 
 target = str(sys.argv[1])
 
 conf_file = 'ssl.conf'
 lines = [line.strip().split('=') for line in open('ssl.conf')]
 config = {}
-#print(lines)
+
+ns = {
+    "api": "http://api.namecheap.com/xml.response"
+}
 for line in lines:
-    #print(config)
+
     config[line[0]] = line[1]
 
 key  = config['apikey']
@@ -36,11 +40,11 @@ def get_info(domain):
     for line in lines:
         data[line[0]] = line[1]
     os.remove("domaininfo.tmp")
-
+    print("Successfully retrived domain info")
     return data
 
 
-def make_dir(info):
+def make_dir(info, filename):
 
     home_path = info['home']+'/public_html'
     user_id = info['uid']
@@ -51,14 +55,9 @@ def make_dir(info):
 
     subprocess.run(['ssh', target, command1 + ' && ' + command2])
 
-
-def upload_file(domain):
-    subprocess.run(['scp -P 4975', target, ''])
-
-
-def renew_ssl(signing_request):
-    print(signing_request)
-
+    subprocess.run(['scp', filename, target+':'+home_path+'/.well-known/pki-validation/'])
+    os.remove(filename)
+    return()
 
 def create_ssl(*type):
     if type:
@@ -76,7 +75,7 @@ def create_ssl(*type):
         for kid in child:
             for baby in kid:
                 cert_id = baby.get('CertificateID')
-    #print(cert_id)
+    print("Successfully created SSL with ID: " + cert_id)
     return(cert_id)
 
 
@@ -88,19 +87,42 @@ def activate_ssl(id,csr):
 
     r = requests.get(base_url, params=params)
     r.raw.decode_content = True
-    return(r.text)
+
+    root = ET.fromstring(r.content)
+    #print(root.tag)
+    ns = {
+        "api": "http://api.namecheap.com/xml.response"
+    }
+
+    filename = root.find(".//api:CommandResponse/api:SSLActivateResult/api:HttpDCValidation/api:DNS/api:FileName",ns).text
+    filecontent = root.find(".//api:CommandResponse/api:SSLActivateResult/api:HttpDCValidation/api:DNS/api:FileContent",ns).text
+
+    y = open(filename, "w")
+    y.write(filecontent)
+    print("Successfully activated SSL certificate, Waiting http validation...")
+    return(filename)
 
 
 def get_cert_status(id):
     cmd = 'namecheap.ssl.getinfo'
 
+    ns = {
+        "api": "http://api.namecheap.com/xml.response"
+    }
+
     params = {'ApiUser': user, 'ApiKey': key, 'UserName': user, 'Command': cmd, 'ClientIp': ip, 'certificateID': id,
               'returncertificate': 'true', 'returntype': 'individual'}
     r = requests.get(base_url, data = params)
     r.raw.decode_content = True
+    root = ET.fromstring(r.content)
+    for child in root:
+        for kid in child:
+            status = kid.get('StatusDescription')
+    #status = root.find(".//api:CommandResponse/api:SSLGetInfoResult/api:StatusDescription",ns).text
 
-    print(r.text)
-
+    #print(r.text)
+    #return(status)
+    return(status)
 
 def generate_csr(domain):
     domain = domain
@@ -118,17 +140,36 @@ def generate_csr(domain):
     with open('ssl.csr', 'r') as csr_file:
         csr=csr_file.read()
     os.remove('ssl.csr')
+    print("Successfully created CSR")
     return csr
 
-
+#get_info -> generate_csr -> Create_ssl -> activate_ssl ->  make_dir
 
 
 #create_ssl('PositiveSSl')
 domain_info = get_info(target)
-csr = generate_csr(target)
-print(activate_ssl(951690, csr))
 
-get_cert_status('951690')
+csr = generate_csr(target)
+
+#make_dir(domain_info)
+
+cert_id = create_ssl()
+
+file = activate_ssl(cert_id, csr)
+
+make_dir(domain_info, file)
+
+status = get_cert_status(cert_id)
+
+while status == "Being Processed.":
+
+    time.sleep(5)
+    status = get_cert_status(cert_id)
+    print("Status: "+status)
+
+print("SSL activation complete final status: "+ status)
+
+
 #make_dir(domain_info)
 
 #create_ssl()
