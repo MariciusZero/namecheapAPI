@@ -10,8 +10,11 @@ import time
 
 target = str(sys.argv[1])
 
+#base_url = 'https://api.sandbox.namecheap.com/xml.response'
+base_url = 'https://api.namecheap.com/xml.response'
 conf_file = 'ssl.conf'
-lines = [line.strip().split('=') for line in open('ssl.conf')]
+
+lines = [line.strip().split('=') for line in open(conf_file)]
 config = {}
 
 ns = {
@@ -25,7 +28,6 @@ key  = config['apikey']
 user = config['user']
 ip   = config['clientip']
 
-base_url = 'https://api.sandbox.namecheap.com/xml.response'
 
 def get_info(domain):
 
@@ -60,6 +62,8 @@ def make_dir(info, filename):
     return()
 
 def create_ssl(*type):
+
+
     if type:
         ssl_type=type[0]
     else:
@@ -89,13 +93,10 @@ def activate_ssl(id,csr):
     r.raw.decode_content = True
 
     root = ET.fromstring(r.content)
-    #print(root.tag)
-    ns = {
-        "api": "http://api.namecheap.com/xml.response"
-    }
-
-    filename = root.find(".//api:CommandResponse/api:SSLActivateResult/api:HttpDCValidation/api:DNS/api:FileName",ns).text
-    filecontent = root.find(".//api:CommandResponse/api:SSLActivateResult/api:HttpDCValidation/api:DNS/api:FileContent",ns).text
+    #filename = root.find(".//api:CommandResponse/api:SSLActivateResult/api:HttpDCValidation/api:DNS/api:FileName",ns).text
+    #filecontent = root.find(".//api:CommandResponse/api:SSLActivateResult/api:HttpDCValidation/api:DNS/api:FileContent",ns).text
+    filename = root.find(".//api:FileName",ns).text
+    filecontent = root.find(".//api:FileContent",ns).text
 
     y = open(filename, "w")
     y.write(filecontent)
@@ -106,9 +107,7 @@ def activate_ssl(id,csr):
 def get_cert_status(id):
     cmd = 'namecheap.ssl.getinfo'
 
-    ns = {
-        "api": "http://api.namecheap.com/xml.response"
-    }
+
 
     params = {'ApiUser': user, 'ApiKey': key, 'UserName': user, 'Command': cmd, 'ClientIp': ip, 'certificateID': id,
               'returncertificate': 'true', 'returntype': 'individual'}
@@ -126,7 +125,7 @@ def get_cert_status(id):
 
 def generate_csr(domain):
     domain = domain
-    print(domain)
+
     country = input('Country?')
     org = domain
     cn = 'www.'+domain
@@ -143,24 +142,52 @@ def generate_csr(domain):
     print("Successfully created CSR")
     return csr
 
+def download_cert(cert_id):
+    cmd = 'namecheap.ssl.getinfo'
+
+    params = {'ApiUser': user, 'ApiKey': key, 'UserName': user, 'Command': cmd, 'ClientIp': ip, 'certificateID': cert_id,
+              'returncertificate': 'true', 'returntype': 'individual'}
+    r = requests.get(base_url, data=params)
+    r.raw.decode_content = True
+
+    root = ET.fromstring(r.content)
+    certificate = root.find(".//api:Certificates/api:Certificate", ns).text
+
+    CA_certificate = ""
+
+    for CA in root.findall(".//api:Certificate/api:Certificate", ns):
+        CA_certificate += CA.text+"\n"
+    #print(r.text)
+
+    cert = open("ssl.cert", "w")
+    cert.write(certificate)
+
+    CA = open("ssl.ca", "w")
+    CA.write(CA_certificate)
+    cert.close()
+    CA.close()
+    return()
+
+def apply_cert(info, target):
+    home_path = info['home']+'/'
+
+    subprocess.run(['scp', 'ssl.cert', target + ':' + home_path])
+    os.remove("ssl.cert")
+    subprocess.run(['scp', 'ssl.ca', target + ':'+home_path])
+    os.remove("ssl.ca")
+    subprocess.run(['ssh', target, 'virtualmin install-cert --domain ' +target+ ' --cert ' +home_path+'ssl.cert  --ca '+home_path+'ssl.ca --csr '+home_path+'ssl.csr --use-newkey'])
+    return()
 #get_info -> generate_csr -> Create_ssl -> activate_ssl ->  make_dir
 
 
-#create_ssl('PositiveSSl')
+
 domain_info = get_info(target)
 
 csr = generate_csr(target)
-
-#make_dir(domain_info)
-
 cert_id = create_ssl()
-
 file = activate_ssl(cert_id, csr)
-
 make_dir(domain_info, file)
-
 status = get_cert_status(cert_id)
-
 while status == "Being Processed.":
 
     time.sleep(5)
@@ -170,6 +197,10 @@ while status == "Being Processed.":
 print("SSL activation complete final status: "+ status)
 
 
+download_cert(cert_id)
+
+apply_cert(domain_info, target)
+print("SSL certicate successfully applied")
 #make_dir(domain_info)
 
 #create_ssl()
